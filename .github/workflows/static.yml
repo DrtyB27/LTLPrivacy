@@ -2,7 +2,7 @@ name: Deploy static content to Pages
 
 on:
   push:
-    branches: ["claude/ltl-batch-rating-app-BNMsY"]
+    branches: ["main"]
   workflow_dispatch:
 
 permissions:
