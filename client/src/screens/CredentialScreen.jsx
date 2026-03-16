@@ -1,4 +1,6 @@
 import React, { useState } from 'react';
+import { buildTestRequest } from '../services/xmlBuilder.js';
+import { postToG3 } from '../services/ratingClient.js';
 
 export default function CredentialScreen({ onConnected }) {
   const [form, setForm] = useState({
@@ -22,17 +24,12 @@ export default function CredentialScreen({ onConnected }) {
     setError('');
 
     try {
-      const res = await fetch('/api/auth/connect', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify(form),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Connection failed');
-      onConnected();
+      const testXml = buildTestRequest(form);
+      await postToG3(testXml, form);
+      // Success — pass credentials to parent (kept in memory only)
+      onConnected(form);
     } catch (err) {
-      setError(err.message);
+      setError(err.message || 'Could not connect — check URL and credentials');
     } finally {
       setLoading(false);
     }

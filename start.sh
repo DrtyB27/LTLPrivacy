@@ -10,30 +10,20 @@ echo
 if ! command -v node &> /dev/null; then
   echo "Error: Node.js is not installed."
   echo "Install it from https://nodejs.org (v18+ recommended)"
+  echo "Or download the portable .zip (no admin needed):"
+  echo "  https://nodejs.org/en/download"
   exit 1
 fi
 
 echo "Node $(node -v) detected"
 
-# Create .env if missing
-if [ ! -f .env ]; then
-  echo "Creating .env from .env.example..."
-  cp .env.example .env
-fi
-
-# Install server dependencies
-echo "Installing server dependencies..."
-npm install --silent
-
 # Install client dependencies
-echo "Installing client dependencies..."
+echo "Installing dependencies..."
 cd client && npm install --silent && cd ..
 
 echo
 echo "========================================="
-echo "  Starting app..."
-echo "  Frontend: http://localhost:5173"
-echo "  Backend:  http://localhost:3001"
+echo "  Starting app on http://localhost:5173"
 echo "========================================="
 echo
 
@@ -48,5 +38,4 @@ echo
   fi
 ) &
 
-# Start both servers
 npm run dev

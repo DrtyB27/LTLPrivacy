@@ -4,15 +4,19 @@ import InputScreen from './screens/InputScreen.jsx';
 import ResultsScreen from './screens/ResultsScreen.jsx';
 
 export default function App() {
-  const [screen, setScreen] = useState('credentials'); // credentials | input | results
+  const [screen, setScreen] = useState('credentials');
+  const [credentials, setCredentials] = useState(null);
   const [results, setResults] = useState([]);
   const [batchParams, setBatchParams] = useState(null);
   const [totalRows, setTotalRows] = useState(0);
 
-  const handleConnected = useCallback(() => setScreen('input'), []);
+  const handleConnected = useCallback((creds) => {
+    setCredentials(creds);
+    setScreen('input');
+  }, []);
 
-  const handleDisconnect = useCallback(async () => {
-    try { await fetch('/api/auth/disconnect', { method: 'POST', credentials: 'include' }); } catch {}
+  const handleDisconnect = useCallback(() => {
+    setCredentials(null);
     setScreen('credentials');
     setResults([]);
     setBatchParams(null);
@@ -37,7 +41,6 @@ export default function App() {
 
   return (
     <div className="min-h-screen flex flex-col">
-      {/* Header */}
       <header className="bg-slate-800 text-white px-6 py-3 flex items-center justify-between shrink-0">
         <h1 className="text-lg font-bold tracking-tight">3G TMS — Batch Rater</h1>
         {screen !== 'credentials' && (
@@ -50,11 +53,11 @@ export default function App() {
         )}
       </header>
 
-      {/* Content */}
       <div className="flex-1 flex flex-col overflow-hidden">
         {screen === 'credentials' && <CredentialScreen onConnected={handleConnected} />}
         {screen === 'input' && (
           <InputScreen
+            credentials={credentials}
             onBatchStart={handleBatchStart}
             onResultRow={handleResultRow}
           />
@@ -65,7 +68,6 @@ export default function App() {
             totalRows={totalRows}
             batchParams={batchParams}
             onNewBatch={handleNewBatch}
-            onResultRow={handleResultRow}
           />
         )}
       </div>

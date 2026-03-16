@@ -1,6 +1,9 @@
 import React, { useState, useCallback } from 'react';
 import ParametersSidebar from '../components/ParametersSidebar.jsx';
 import CsvDropzone from '../components/CsvDropzone.jsx';
+import { buildRatingRequest } from '../services/xmlBuilder.js';
+import { postToG3, applyMargin, sleep } from '../services/ratingClient.js';
+import { parseRatingResponse } from '../services/xmlParser.js';
 
 const DEFAULT_PARAMS = {
   contRef: '',
@@ -18,74 +21,99 @@ const DEFAULT_PARAMS = {
   saveResponseXml: true,
 };
 
-export default function InputScreen({ onBatchStart, onResultRow }) {
+export default function InputScreen({ credentials, onBatchStart, onResultRow }) {
   const [params, setParams] = useState(DEFAULT_PARAMS);
   const [csvRows, setCsvRows] = useState(null);
   const [running, setRunning] = useState(false);
 
-  const handleDataLoaded = useCallback((rows) => {
-    setCsvRows(rows);
-  }, []);
-
-  const handleClear = useCallback(() => {
-    setCsvRows(null);
-  }, []);
+  const handleDataLoaded = useCallback((rows) => setCsvRows(rows), []);
+  const handleClear = useCallback(() => setCsvRows(null), []);
 
   const handleRunBatch = async () => {
     if (!csvRows || csvRows.length === 0) return;
     setRunning(true);
 
-    // Signal batch start
     onBatchStart(params, csvRows.length);
 
-    try {
-      const res = await fetch('/api/rate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({ rows: csvRows, params }),
-      });
+    for (let i = 0; i < csvRows.length; i++) {
+      const row = csvRows[i];
+      const startTime = Date.now();
+      let result;
 
-      if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.error || 'Batch request failed');
+      try {
+        const xml = buildRatingRequest(row, params, credentials);
+        const responseXml = await postToG3(xml, credentials);
+        const parsed = parseRatingResponse(responseXml);
+        const elapsedMs = Date.now() - startTime;
+
+        const ratesWithMargin = parsed.rates.map(rate => {
+          const { customerPrice, marginType, marginValue } = applyMargin(rate.totalCharge, rate.carrierSCAC, params.margins);
+          return { ...rate, marginType, marginValue, customerPrice };
+        });
+
+        result = {
+          rowIndex: i,
+          reference: row['Reference'] || '',
+          origCity: row['Orig City'] || '',
+          origState: row['Org State'] || '',
+          origPostal: row['Org Postal Code'] || '',
+          origCountry: row['Orig Cntry'] || 'US',
+          destCity: row['DstCity'] || '',
+          destState: row['Dst State'] || '',
+          destPostal: row['Dst Postal Code'] || '',
+          destCountry: row['Dst Cntry'] || 'US',
+          inputClass: row['Class'] || '',
+          inputNetWt: row['Net Wt Lb'] || '',
+          inputPcs: row['Pcs'] || '',
+          inputHUs: row['Ttl HUs'] || '',
+          pickupDate: row['Pickup Date'] || '',
+          contRef: row['Cont. Ref'] || params.contRef || '',
+          clientTPNum: row['Client TP Num'] || params.clientTPNum || '',
+          success: parsed.rates.length > 0,
+          ratingMessage: parsed.ratingMessage,
+          elapsedMs,
+          rateRequestXml: params.saveRequestXml ? xml : '',
+          rateResponseXml: params.saveResponseXml ? responseXml : '',
+          rates: ratesWithMargin,
+        };
+      } catch (err) {
+        const elapsedMs = Date.now() - startTime;
+        result = {
+          rowIndex: i,
+          reference: row['Reference'] || '',
+          origCity: row['Orig City'] || '',
+          origState: row['Org State'] || '',
+          origPostal: row['Org Postal Code'] || '',
+          origCountry: row['Orig Cntry'] || 'US',
+          destCity: row['DstCity'] || '',
+          destState: row['Dst State'] || '',
+          destPostal: row['Dst Postal Code'] || '',
+          destCountry: row['Dst Cntry'] || 'US',
+          inputClass: row['Class'] || '',
+          inputNetWt: row['Net Wt Lb'] || '',
+          inputPcs: row['Pcs'] || '',
+          inputHUs: row['Ttl HUs'] || '',
+          pickupDate: row['Pickup Date'] || '',
+          contRef: row['Cont. Ref'] || params.contRef || '',
+          clientTPNum: row['Client TP Num'] || params.clientTPNum || '',
+          success: false,
+          ratingMessage: err.message,
+          elapsedMs,
+          rateRequestXml: '',
+          rateResponseXml: '',
+          rates: [],
+        };
       }
 
-      // Read NDJSON stream
-      const reader = res.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = '';
+      onResultRow(result);
 
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split('\n');
-        buffer = lines.pop(); // Keep incomplete line in buffer
-
-        for (const line of lines) {
-          if (line.trim()) {
-            try {
-              const row = JSON.parse(line);
-              onResultRow(row);
-            } catch {}
-          }
-        }
+      // 150ms delay between requests
+      if (i < csvRows.length - 1) {
+        await sleep(150);
       }
-
-      // Process any remaining buffer
-      if (buffer.trim()) {
-        try {
-          const row = JSON.parse(buffer);
-          onResultRow(row);
-        } catch {}
-      }
-    } catch (err) {
-      console.error('Batch error:', err);
-    } finally {
-      setRunning(false);
     }
+
+    setRunning(false);
   };
 
   return (

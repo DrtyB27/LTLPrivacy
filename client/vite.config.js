@@ -4,9 +4,6 @@ import tailwindcss from '@tailwindcss/vite';
 
 export default defineConfig({
   plugins: [react(), tailwindcss()],
-  server: {
-    proxy: {
-      '/api': 'http://localhost:3001',
-    },
-  },
+  // Relative paths so it works from any folder (SharePoint, file share, etc.)
+  base: './',
 });
