@@ -1,15 +1,18 @@
 /**
  * Browser-side HTTP client for 3G TMS Rating API.
  *
- * When running on localhost (via server.js), requests are routed through a
- * local proxy at /api/rate to avoid CORS restrictions entirely.
- * When hosted elsewhere (e.g. GitHub Pages), requests go direct.
+ * All requests are routed through a Cloudflare Worker proxy to bypass CORS.
+ * On localhost, the local Node.js server proxy is used instead.
  */
 
-const isLocalProxy = ['localhost', '127.0.0.1'].includes(window.location.hostname);
+// ── UPDATE THIS after deploying your Cloudflare Worker ──
+const WORKER_URL = 'https://ltl-rating-proxy.<YOUR-CF-SUBDOMAIN>.workers.dev';
+
+const isLocalhost = ['localhost', '127.0.0.1'].includes(window.location.hostname);
+const PROXY_URL = isLocalhost ? '/api/rate' : WORKER_URL;
 
 /**
- * Posts XML to the 3G TMS Rating API.
+ * Posts XML to the 3G TMS Rating API (via proxy).
  * @returns {Promise<string>} Raw XML response string.
  */
 export async function postToG3(xmlBody, credentials) {
@@ -23,25 +26,12 @@ export async function postToG3(xmlBody, credentials) {
   const timeout = setTimeout(() => controller.abort(), 30000);
 
   try {
-    let res;
-
-    if (isLocalProxy) {
-      // Route through the local Node.js proxy — no CORS issues
-      res = await fetch('/api/rate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url: targetUrl, xmlBody }),
-        signal: controller.signal,
-      });
-    } else {
-      // Direct call (requires 3G server to allow this origin)
-      res = await fetch(targetUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/xml' },
-        body: xmlBody,
-        signal: controller.signal,
-      });
-    }
+    const res = await fetch(PROXY_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url: targetUrl, xmlBody }),
+      signal: controller.signal,
+    });
 
     if (!res.ok) {
       const text = await res.text();
@@ -53,12 +43,10 @@ export async function postToG3(xmlBody, credentials) {
     if (err.name === 'AbortError') {
       throw new Error('Request timed out after 30s');
     }
-    // CORS error shows as TypeError: Failed to fetch
     if (err.message === 'Failed to fetch' || err.message.includes('NetworkError')) {
       throw new Error(
-        'Network error — this may be a CORS issue. ' +
-        'The 3G TMS server must allow cross-origin requests from this page. ' +
-        'Contact your 3G admin to whitelist this origin, or use a CORS proxy.'
+        'Network error — could not reach the proxy. ' +
+        'Check that the Cloudflare Worker is deployed and the URL is correct in ratingClient.js.'
       );
     }
     throw err;
