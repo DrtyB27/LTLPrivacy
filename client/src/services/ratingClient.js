@@ -1,7 +1,12 @@
 /**
  * Browser-side HTTP client for 3G TMS Rating API.
- * Uses fetch() directly from the browser.
+ *
+ * When running on localhost (via server.js), requests are routed through a
+ * local proxy at /api/rate to avoid CORS restrictions entirely.
+ * When hosted elsewhere (e.g. GitHub Pages), requests go direct.
  */
+
+const isLocalProxy = ['localhost', '127.0.0.1'].includes(window.location.hostname);
 
 /**
  * Posts XML to the 3G TMS Rating API.
@@ -12,18 +17,31 @@ export async function postToG3(xmlBody, credentials) {
 
   const encodedUsername = encodeURIComponent(username);
   const encodedPassword = encodeURIComponent(password);
-  const url = `${baseURL}/web/services/rating/findRates?username=${encodedUsername}&password=${encodedPassword}`;
+  const targetUrl = `${baseURL}/web/services/rating/findRates?username=${encodedUsername}&password=${encodedPassword}`;
 
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 30000);
 
   try {
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/xml' },
-      body: xmlBody,
-      signal: controller.signal,
-    });
+    let res;
+
+    if (isLocalProxy) {
+      // Route through the local Node.js proxy — no CORS issues
+      res = await fetch('/api/rate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: targetUrl, xmlBody }),
+        signal: controller.signal,
+      });
+    } else {
+      // Direct call (requires 3G server to allow this origin)
+      res = await fetch(targetUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/xml' },
+        body: xmlBody,
+        signal: controller.signal,
+      });
+    }
 
     if (!res.ok) {
       const text = await res.text();
