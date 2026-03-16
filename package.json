@@ -1,0 +1,10 @@
+{
+  "name": "ltl-batch-rating",
+  "version": "3.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "cd client && npx vite --port 5173",
+    "build": "cd client && npx vite build",
+    "preview": "cd client && npx vite preview"
+  }
+}
